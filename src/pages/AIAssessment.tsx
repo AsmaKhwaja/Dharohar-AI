@@ -1,15 +1,13 @@
-
 import { useState, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   BrainCircuit,
-  Upload,
   X,
   ImageIcon,
   ChevronDown,
   AlertCircle,
-  Sparkles,
   Zap,
+  Crosshair,
 } from 'lucide-react'
 import type { IncidentForm, AIAssessmentResult, AgentStep } from '../types'
 import { HERITAGE_SITES, INCIDENT_TYPES, VISITOR_PRESSURE_LEVELS, ENVIRONMENTAL_CONDITIONS, DEMO_INCIDENT } from '../data/demoData'
@@ -26,6 +24,45 @@ const ENV_LABELS: Record<string, string> = {
   EXTREME_HEAT: 'Extreme Heat (>40°C)',
   POST_MONSOON: 'Post-Monsoon',
 }
+
+const DAMAGE_HOTSPOTS = [
+  {
+    title: 'Archway Shear Crack',
+    siteId: 'teen-darwaza',
+    incidentType: 'Structural deterioration' as const,
+    condition: 'Vertical 6mm shear crack along central limestone arch pillar. Mortar disintegration and lateral load displacement.',
+    visitorPressure: 'HIGH' as const,
+    env: 'POST_MONSOON' as const,
+    months: 8,
+  },
+  {
+    title: 'Kund Sandstone Moisture',
+    siteId: 'sun-temple-modhera',
+    incidentType: 'Surface damage' as const,
+    condition: 'Black algae biofilm and sub-florescence salt crystal crust along lower stepwell masonry. Sandstone softening detected.',
+    visitorPressure: 'MODERATE' as const,
+    env: 'WET' as const,
+    months: 4,
+  },
+  {
+    title: 'Eastern Rampart Seepage',
+    siteId: 'bhadra-fort',
+    incidentType: 'Water/moisture damage' as const,
+    condition: 'Severe moisture trapped behind stone masonry facade causing structural wall bulging and mortar leeching.',
+    visitorPressure: 'EXTREME' as const,
+    env: 'HUMID' as const,
+    months: 12,
+  },
+  {
+    title: 'Pol Facade Wood Decay',
+    siteId: 'pol-heritage-zone',
+    incidentType: 'Structural deterioration' as const,
+    condition: 'Termite infestation and moisture rot along 18th-century carved wooden brackets and shoring supports.',
+    visitorPressure: 'HIGH' as const,
+    env: 'HUMID' as const,
+    months: 15,
+  },
+]
 
 const EMPTY_FORM: IncidentForm = {
   siteId: '',
@@ -47,6 +84,7 @@ export default function AIAssessment() {
   const [result, setResult] = useState<AIAssessmentResult | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([])
+  const [activeHotspot, setActiveHotspot] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const setField = <K extends keyof IncidentForm>(key: K, value: IncidentForm[K]) => {
@@ -101,6 +139,22 @@ export default function AIAssessment() {
     }
   }
 
+  const handleHotspotSelect = (idx: number) => {
+    const h = DAMAGE_HOTSPOTS[idx]
+    setActiveHotspot(idx)
+    setForm({
+      siteId: h.siteId,
+      incidentType: h.incidentType,
+      observedCondition: h.condition,
+      visitorPressure: h.visitorPressure,
+      environmentalCondition: h.env,
+      lastInspectionMonths: h.months,
+      evidenceImage: null,
+    })
+    setResult(null)
+    setError(null)
+  }
+
   const handleLoadDemo = () => {
     setForm({
       ...EMPTY_FORM,
@@ -122,108 +176,152 @@ export default function AIAssessment() {
     setError(null)
     setImagePreview(null)
     setAgentSteps([])
+    setActiveHotspot(null)
   }
 
   const selectedSite = HERITAGE_SITES.find((s) => s.id === form.siteId)
 
   return (
-    <div className="p-7 animate-fade-in">
+    <div className="p-6 sm:p-8 animate-fade-in space-y-8 min-h-screen">
+
       {/* Header */}
-      <div className="flex items-start justify-between mb-7">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-6">
         <div>
-          <div className="flex items-center gap-2 mb-2">
-            <BrainCircuit className="w-3.5 h-3.5" style={{ color: '#c9952a' }} />
-            <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: '#4a4540' }}>
+          <div className="flex items-center gap-2 mb-1.5">
+            <BrainCircuit className="w-4 h-4 text-amber-400" />
+            <span className="text-xs font-bold uppercase tracking-widest text-amber-400">
               Heritage Guardian Orchestrator · IBM Granite AI
             </span>
             {IS_DEMO_MODE && (
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
-                style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.2)', color: '#fbbf24' }}>
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300">
                 Demo AI Mode
               </span>
             )}
           </div>
-          <h1 className="font-serif text-3xl font-bold" style={{ color: '#f0ead8' }}>AI Heritage Assessment</h1>
-          <p className="text-sm mt-1" style={{ color: '#4a4540' }}>
-            Submit an incident report to run the Heritage Guardian Orchestrator pipeline.
+          <h1 className="font-serif text-3xl font-extrabold text-slate-100">AI Incident Risk Assessment</h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+            Submit an incident report or click an interactive damage hotspot to launch IBM Granite reasoning.
           </p>
         </div>
-        <button onClick={handleLoadDemo} className="btn-secondary text-sm px-4 py-2 flex-shrink-0">
-          <Zap className="w-4 h-4" /> Load Demo Incident
+
+        <button onClick={handleLoadDemo} className="btn-secondary text-xs px-4 py-2.5 flex items-center gap-1.5 self-start sm:self-auto">
+          <Zap className="w-4 h-4 text-amber-400" /> Load Demo Scenario
         </button>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-5 gap-7">
-        {/* ── Form ── */}
+      {/* Interactive Damage Hotspot Blueprint Selector Widget */}
+      <div className="panel p-5 border border-amber-500/20 space-y-3 shadow-lg">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
+            <Crosshair className="w-4 h-4 text-amber-400" /> Interactive Structural Damage Hotspot Inspector:
+          </span>
+          <span className="text-[10px] text-amber-400 font-mono">Click any hotspot to auto-fill inspection details</span>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {DAMAGE_HOTSPOTS.map((h, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => handleHotspotSelect(idx)}
+              className={`p-3 rounded-xl border text-left transition-all ${
+                activeHotspot === idx
+                  ? 'bg-amber-500/20 border-amber-500/50 shadow-md text-amber-200'
+                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-bold text-slate-100">{h.title}</span>
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+              </div>
+              <p className="text-[10px] text-slate-400 truncate">{h.siteId.replace(/-/g, ' ')}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-5 gap-8">
+        
+        {/* Incident Form Column */}
         <div className="xl:col-span-2">
           <form onSubmit={handleSubmit} noValidate>
-            <div className="panel p-5 space-y-4">
-              <div className="flex items-center gap-2 mb-1">
-                <AlertCircle className="w-4 h-4" style={{ color: '#c9952a' }} />
-                <h2 className="font-semibold" style={{ color: '#f0ead8' }}>Incident Report</h2>
+            <div className="panel p-6 space-y-5 border border-slate-800 shadow-xl">
+              <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+                <AlertCircle className="w-4 h-4 text-amber-400" />
+                <h2 className="font-serif text-lg font-bold text-slate-100">Incident Form</h2>
               </div>
 
-              {/* Site */}
+              {/* Site Selection */}
               <div>
-                <label className="form-label">Heritage Site <span className="text-red-400">*</span></label>
+                <label className="form-label">Heritage Site <span className="text-rose-400">*</span></label>
                 <div className="relative">
-                  <select value={form.siteId} onChange={(e) => setField('siteId', e.target.value)} className="form-input appearance-none pr-10">
-                    <option value="">Select a heritage site...</option>
+                  <select
+                    value={form.siteId}
+                    onChange={(e) => setField('siteId', e.target.value)}
+                    className="form-select text-xs pr-10"
+                  >
+                    <option value="">Select site...</option>
                     {HERITAGE_SITES.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name} — Health: {s.healthScore}</option>
+                      <option key={s.id} value={s.id}>{s.name} (Health Score: {s.healthScore})</option>
                     ))}
                   </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
                 </div>
                 {selectedSite && (
-                  <p className="text-[11px] mt-1 px-1" style={{ color: '#5a5550' }}>
-                    {selectedSite.location} · {selectedSite.heritageType} · Sensitivity: {selectedSite.visitorPressure} visitor pressure
+                  <p className="text-[11px] mt-1.5 text-slate-400">
+                    Location: {selectedSite.location} · Category: {selectedSite.heritageType}
                   </p>
                 )}
               </div>
 
               {/* Incident Type */}
               <div>
-                <label className="form-label">Incident Type <span className="text-red-400">*</span></label>
+                <label className="form-label">Incident Classification <span className="text-rose-400">*</span></label>
                 <div className="relative">
-                  <select value={form.incidentType} onChange={(e) => setField('incidentType', e.target.value as IncidentForm['incidentType'])} className="form-input appearance-none pr-10">
-                    <option value="">Select incident type...</option>
+                  <select
+                    value={form.incidentType}
+                    onChange={(e) => setField('incidentType', e.target.value as IncidentForm['incidentType'])}
+                    className="form-select text-xs pr-10"
+                  >
+                    <option value="">Select type...</option>
                     {INCIDENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
                 </div>
               </div>
 
-              {/* Condition */}
+              {/* Observed Condition */}
               <div>
-                <label className="form-label">Observed Condition <span className="text-red-400">*</span></label>
+                <label className="form-label">Observed Structural Condition <span className="text-rose-400">*</span></label>
                 <textarea
                   value={form.observedCondition}
                   onChange={(e) => setField('observedCondition', e.target.value)}
-                  className="form-input resize-none"
+                  className="form-input text-xs resize-none"
                   rows={4}
-                  placeholder="Describe what you observed: cracks, staining, spalling, vegetation, structural changes..."
+                  placeholder="Describe observed physical anomalies (e.g. 5mm vertical crack on stone pillar, moisture seepage)..."
                 />
-                <p className="text-[10px] mt-1 px-1" style={{ color: '#3a3530' }}>
-                  {form.observedCondition.length} chars — minimum 10 required
+                <p className="text-[10px] mt-1 text-slate-500">
+                  {form.observedCondition.length} chars (minimum 10 required)
                 </p>
               </div>
 
-              {/* Visitor Pressure */}
+              {/* Visitor Strain */}
               <div>
-                <label className="form-label">Visitor Pressure <span className="text-red-400">*</span></label>
+                <label className="form-label">Visitor Strain Level <span className="text-rose-400">*</span></label>
                 <div className="grid grid-cols-4 gap-2">
                   {VISITOR_PRESSURE_LEVELS.map((level) => {
-                    const activeColors: Record<string, string> = { EXTREME: '#ef4444', HIGH: '#f97316', MODERATE: '#eab308', LOW: '#22c55e' }
                     const isActive = form.visitorPressure === level
                     return (
-                      <button key={level} type="button" onClick={() => setField('visitorPressure', level)}
-                        className="py-2 rounded-xl text-xs font-bold transition-all border"
-                        style={{
-                          background: isActive ? `${activeColors[level]}20` : 'rgba(255,255,255,0.03)',
-                          border: `1px solid ${isActive ? activeColors[level] + '60' : 'rgba(255,255,255,0.07)'}`,
-                          color: isActive ? activeColors[level] : '#4a4540',
-                        }}>
+                      <button
+                        key={level}
+                        type="button"
+                        onClick={() => setField('visitorPressure', level)}
+                        className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                          isActive
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm'
+                            : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
+                        }`}
+                      >
                         {level}
                       </button>
                     )
@@ -233,18 +331,21 @@ export default function AIAssessment() {
 
               {/* Environmental Condition */}
               <div>
-                <label className="form-label">Environmental Condition <span className="text-red-400">*</span></label>
+                <label className="form-label">Environmental Condition <span className="text-rose-400">*</span></label>
                 <div className="grid grid-cols-2 gap-2">
                   {ENVIRONMENTAL_CONDITIONS.map((cond) => {
                     const isActive = form.environmentalCondition === cond
                     return (
-                      <button key={cond} type="button" onClick={() => setField('environmentalCondition', cond)}
-                        className="py-2 px-3 rounded-xl text-xs font-medium border text-left transition-all"
-                        style={{
-                          background: isActive ? 'rgba(201,149,42,0.1)' : 'rgba(255,255,255,0.03)',
-                          border: `1px solid ${isActive ? 'rgba(201,149,42,0.4)' : 'rgba(255,255,255,0.07)'}`,
-                          color: isActive ? '#c9952a' : '#4a4540',
-                        }}>
+                      <button
+                        key={cond}
+                        type="button"
+                        onClick={() => setField('environmentalCondition', cond)}
+                        className={`p-2.5 rounded-xl text-xs font-semibold text-left border transition-all ${
+                          isActive
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                            : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
+                        }`}
+                      >
                         {ENV_LABELS[cond]}
                       </button>
                     )
@@ -261,35 +362,31 @@ export default function AIAssessment() {
                   max={120}
                   value={form.lastInspectionMonths ?? ''}
                   onChange={(e) => setField('lastInspectionMonths', e.target.value ? Number(e.target.value) : undefined)}
-                  className="form-input"
-                  placeholder="e.g. 8"
+                  className="form-input text-xs"
+                  placeholder="e.g. 6"
                 />
               </div>
 
-              {/* Image Upload */}
+              {/* Evidence Upload */}
               <div>
-                <label className="form-label">Evidence Image (optional — assessment works without it)</label>
+                <label className="form-label">Evidence Image (optional)</label>
                 {imagePreview ? (
-                  <div className="relative rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
+                  <div className="relative rounded-xl overflow-hidden border border-slate-800">
                     <img src={imagePreview} alt="Evidence" className="w-full h-36 object-cover" />
-                    <button type="button" onClick={removeImage}
-                      className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition-colors"
-                      style={{ background: 'rgba(10,12,20,0.8)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                      <X className="w-4 h-4" style={{ color: '#c8c0b4' }} />
+                    <button
+                      type="button"
+                      onClick={removeImage}
+                      className="absolute top-2 right-2 p-1 rounded-full bg-slate-950/80 text-slate-300 hover:text-white border border-slate-700"
+                    >
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
                 ) : (
-                  <label className="flex flex-col items-center gap-2 p-5 rounded-xl cursor-pointer transition-all"
-                    style={{ border: '2px dashed rgba(255,255,255,0.07)' }}
-                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'rgba(201,149,42,0.3)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)')}>
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                      <ImageIcon className="w-4 h-4" style={{ color: '#4a4540' }} />
-                    </div>
+                  <label className="flex flex-col items-center gap-2 p-5 rounded-xl border-2 border-dashed border-slate-800 hover:border-amber-500/40 cursor-pointer transition-colors bg-slate-950/40">
+                    <ImageIcon className="w-5 h-5 text-slate-500" />
                     <div className="text-center">
-                      <p className="text-xs font-semibold" style={{ color: '#4a4540' }}>Click to upload evidence image</p>
-                      <p className="text-[10px] mt-0.5" style={{ color: '#3a3530' }}>PNG, JPG up to 10MB · optional</p>
+                      <p className="text-xs font-semibold text-slate-300">Click to attach evidence photo</p>
+                      <p className="text-[10px] text-slate-500">PNG, JPG up to 10MB</p>
                     </div>
                     <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
                   </label>
@@ -298,70 +395,64 @@ export default function AIAssessment() {
 
               {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
 
-              {/* Actions */}
-              <div className="flex gap-3 pt-1">
-                <button type="submit" disabled={loading} className="btn-primary flex-1 justify-center disabled:opacity-50 disabled:cursor-not-allowed">
+              <div className="flex items-center gap-3 pt-2">
+                <button type="submit" disabled={loading} className="btn-primary flex-1 justify-center py-3 text-xs sm:text-sm">
                   {loading ? (
-                    <><span className="w-4 h-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />Analysing...</>
+                    <><span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> Analysing Pipeline...</>
                   ) : (
-                    <><Sparkles className="w-4 h-4" />Run AI Assessment</>
+                    <><BrainCircuit className="w-4 h-4" /> Run AI Assessment</>
                   )}
                 </button>
-                {result && <button type="button" onClick={handleReset} className="btn-secondary px-4">Reset</button>}
+                {result && (
+                  <button type="button" onClick={handleReset} className="btn-secondary px-4 py-3 text-xs">
+                    Reset
+                  </button>
+                )}
               </div>
             </div>
           </form>
-
-          {/* Info box */}
-          <div className="mt-3 p-4 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div className="flex items-center gap-2 mb-1.5">
-              <Upload className="w-3.5 h-3.5 text-muted" />
-              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#4a4540' }}>Multi-Agent Pipeline</span>
-            </div>
-            <p className="text-[10px] leading-relaxed" style={{ color: '#3a3530' }}>
-              Assessments run through the Heritage Guardian Orchestrator: Condition Analyst → Heritage Risk Analyst → Conservation Advisor → Granite Synthesis.
-              {IS_DEMO_MODE ? ' Running in Demo AI Mode — deterministic results without IBM credentials.' : ' Connected to IBM Granite LLM.'}
-            </p>
-          </div>
         </div>
 
-        {/* ── Result Panel ── */}
+        {/* Assessment Output Column */}
         <div id="assessment-result" className="xl:col-span-3">
           {!result && !loading && agentSteps.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-64 xl:h-full panel rounded-xl text-center p-12">
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
-                style={{ background: 'rgba(201,149,42,0.08)', border: '1px solid rgba(201,149,42,0.15)' }}>
-                <BrainCircuit className="w-8 h-8" style={{ color: '#c9952a', opacity: 0.5 }} />
+            <div className="panel p-12 border border-slate-800 text-center flex flex-col items-center justify-center min-h-[500px]">
+              <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mb-4">
+                <BrainCircuit className="w-8 h-8 text-amber-400" />
               </div>
-              <h3 className="font-serif text-xl font-semibold mb-2" style={{ color: '#4a4540' }}>Ready for Assessment</h3>
-              <p className="text-sm max-w-xs leading-relaxed" style={{ color: '#3a3530' }}>
-                Fill in the incident report and click "Run AI Assessment" to launch the Heritage Guardian Orchestrator pipeline.
+              <h3 className="font-serif text-xl font-bold text-slate-100 mb-2">Ready for Incident Assessment</h3>
+              <p className="text-xs text-slate-400 max-w-sm leading-relaxed mb-6">
+                Fill in the incident report parameters or select a damage hotspot above to run the 4-stage IBM Granite multi-agent pipeline.
               </p>
-              <button onClick={handleLoadDemo} className="btn-secondary mt-6 text-sm px-5 py-2">
-                <Zap className="w-4 h-4" /> Load Demo Incident
+              <button onClick={handleLoadDemo} className="btn-secondary text-xs px-5 py-2.5">
+                <Zap className="w-4 h-4 text-amber-400" /> Load Demo Scenario
               </button>
             </div>
           )}
 
           {loading && agentSteps.length > 0 && (
-            <div className="panel p-6 space-y-4">
-              <div className="flex items-center gap-2 mb-2">
+            <div className="panel p-6 space-y-4 border border-amber-500/30">
+              <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
                 <LoadingSpinner size="sm" />
-                <p className="text-sm font-semibold" style={{ color: '#f0ead8' }}>Heritage Guardian Orchestrator Running...</p>
+                <div>
+                  <p className="font-semibold text-slate-100 text-sm">Heritage Guardian Orchestrator Executing</p>
+                  <p className="text-xs text-amber-400">IBM Granite Multi-Agent Pipeline</p>
+                </div>
               </div>
               <AgentWorkflow steps={agentSteps} />
             </div>
           )}
 
           {loading && agentSteps.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-64 xl:h-full panel rounded-xl text-center p-12">
-              <LoadingSpinner message="Initialising Heritage Guardian Orchestrator..." size="lg" />
+            <div className="panel p-12 border border-slate-800 text-center flex flex-col items-center justify-center min-h-[500px]">
+              <LoadingSpinner message="Initialising IBM Granite Multi-Agent Pipeline..." size="lg" />
             </div>
           )}
 
           {result && <AssessmentResult result={result} />}
         </div>
       </div>
+
     </div>
   )
 }

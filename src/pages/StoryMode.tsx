@@ -1,5 +1,17 @@
-import { useState } from 'react'
-import { BookOpen, Sparkles, ChevronDown, Clock, Building2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import {
+  BookOpen,
+  Sparkles,
+  ChevronDown,
+  Play,
+  Pause,
+  Square,
+  Copy,
+  Check,
+  Download,
+  Volume2,
+  Award,
+} from 'lucide-react'
 import { HERITAGE_SITES, STORY_INTERESTS } from '../data/demoData'
 import { generateHeritageStory } from '../services/graniteService'
 import type { HeritageStory, StoryInterest } from '../types'
@@ -15,21 +27,61 @@ const INTEREST_ICONS: Record<StoryInterest, string> = {
 }
 
 const INTEREST_DESC: Record<StoryInterest, string> = {
-  Architecture: 'Architectural analysis & design heritage',
-  History: 'Historical narrative with rulers & dates',
-  Culture: 'Human interest & living traditions',
-  'Family-friendly': 'Engaging stories for children 8+',
-  '5-minute quick story': 'Fast-paced comprehensive overview',
+  Architecture: 'Structural engineering, masonry craft & architectural lineage',
+  History: 'Historical timelines, royal dynasties & strategic evolution',
+  Culture: 'Living community traditions, pol culture & human stories',
+  'Family-friendly': 'Engaging, accessible stories tailored for all ages',
+  '5-minute quick story': 'Concise executive summary of heritage significance',
+}
+
+const SITE_TRIVIA: Record<string, string[]> = {
+  'ahmedabad-walled-city': [
+    'Founded in 1411 AD by Sultan Ahmed Shah.',
+    'First city in India to be inscribed as a UNESCO World Heritage City (2017).',
+    'Features over 600 distinct organic residential clusters called "Pols".',
+  ],
+  'teen-darwaza': [
+    'Built in 1415 AD as the royal gateway to Maidan-i-Shahi.',
+    'An eternal lamp inside has been kept lit continuously by a Muslim family for over 600 years.',
+    'Exquisite carved stone piers showcasing Indo-Islamic synthesis.',
+  ],
+  'bhadra-fort': [
+    'Constructed in 1411 AD using red stone.',
+    'Houses the historic Bhadra Kali temple built during Maratha rule in 1795.',
+    'Served as the administrative citadel of Gujarat Sultanate.',
+  ],
+  'sun-temple-modhera': [
+    'Built in 1026-27 AD by King Bhima I of the Solanki dynasty.',
+    'Designed so the first rays of the rising sun fall directly on the golden idol at equinoxes.',
+    'Features 108 miniature shrines carved along the stepped Surya Kund tank.',
+  ],
+  'rani-ki-vav': [
+    'Built in 1063 AD by Queen Udayamati in memory of King Bhima I.',
+    'Features over 500 primary sculptures and 1,000 minor ones across 7 subterranean tiers.',
+    'Inscribed as a UNESCO World Heritage Site in 2014.',
+  ],
 }
 
 export default function StoryMode() {
-  const [siteId, setSiteId] = useState('')
-  const [interest, setInterest] = useState<StoryInterest | ''>('')
+  const [siteId, setSiteId] = useState(HERITAGE_SITES[0].id)
+  const [interest, setInterest] = useState<StoryInterest | ''>('Architecture')
   const [story, setStory] = useState<HeritageStory | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [activeTriviaIdx, setActiveTriviaIdx] = useState(0)
 
   const selectedSite = HERITAGE_SITES.find((s) => s.id === siteId)
+
+  // Speech synthesis cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel()
+      }
+    }
+  }, [])
 
   const handleGenerate = async () => {
     if (!siteId) { setError('Please select a heritage site.'); return }
@@ -37,6 +89,7 @@ export default function StoryMode() {
     setError(null)
     setLoading(true)
     setStory(null)
+    stopAudio()
     try {
       const result = await generateHeritageStory(siteId, interest as StoryInterest)
       setStory(result)
@@ -47,78 +100,126 @@ export default function StoryMode() {
     }
   }
 
+  const toggleAudio = () => {
+    if (!('speechSynthesis' in window) || !story) return
+
+    if (isPlayingAudio) {
+      window.speechSynthesis.pause()
+      setIsPlayingAudio(false)
+    } else {
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume()
+        setIsPlayingAudio(true)
+      } else {
+        window.speechSynthesis.cancel()
+        const utterance = new SpeechSynthesisUtterance(story.content)
+        utterance.rate = 0.95
+        utterance.pitch = 1.0
+        utterance.onend = () => setIsPlayingAudio(false)
+        utterance.onerror = () => setIsPlayingAudio(false)
+        window.speechSynthesis.speak(utterance)
+        setIsPlayingAudio(true)
+      }
+    }
+  }
+
+  const stopAudio = () => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel()
+    }
+    setIsPlayingAudio(false)
+  }
+
+  const handleCopy = () => {
+    if (!story) return
+    navigator.clipboard.writeText(story.content)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleDownload = () => {
+    if (!story) return
+    const blob = new Blob([`# ${story.siteName} — ${story.interest}\n\n${story.content}`], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `Heritage-Story-${story.siteName.replace(/\s+/g, '-')}.md`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const trivia = SITE_TRIVIA[siteId] || SITE_TRIVIA['ahmedabad-walled-city']
+
   return (
-    <div className="p-8 animate-fade-in">
+    <div className="p-6 sm:p-8 animate-fade-in space-y-6 min-h-screen">
+
       {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center gap-2 text-xs text-stone-500 mb-2">
-          <BookOpen className="w-3.5 h-3.5" />
-          <span className="uppercase tracking-wider font-medium">Heritage Story Mode · IBM Granite</span>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+        <div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <BookOpen className="w-4 h-4 text-amber-400" />
+            <span className="text-xs font-bold uppercase tracking-widest text-amber-400">
+              Heritage Story Engine · IBM Granite LLM
+            </span>
+          </div>
+          <h1 className="font-serif text-3xl font-extrabold text-slate-100">Heritage Narrative Generator</h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+            Transforming structural & historic data into grounded cultural narratives with live WebSpeech audio narration
+          </p>
         </div>
-        <h1 className="font-serif text-3xl font-bold text-stone-100">Heritage Story Generator</h1>
-        <p className="text-stone-500 mt-1.5 text-sm">
-          Experience Gujarat's heritage through AI-crafted narratives — factual, engaging, and tailored to your interest.
-        </p>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-8">
-        {/* Controls */}
-        <div className="xl:col-span-2 space-y-5">
-          <div className="glass-card p-6 space-y-5">
-            <div className="flex items-center gap-2 mb-1">
-              <div className="w-8 h-8 rounded-lg bg-sand-500/15 border border-sand-500/25 flex items-center justify-center">
-                <Sparkles className="w-4 h-4 text-sand-400" />
-              </div>
-              <h2 className="font-semibold text-stone-200">Configure Story</h2>
+        
+        {/* Controls Column */}
+        <div className="xl:col-span-2 space-y-6">
+          <div className="panel p-6 space-y-5 border border-slate-800 shadow-xl">
+            <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <h2 className="font-serif text-lg font-bold text-slate-100">Narrative Parameters</h2>
             </div>
 
             {/* Site */}
             <div>
-              <label className="form-label">
-                Heritage Site <span className="text-red-400">*</span>
-              </label>
+              <label className="form-label">Heritage Site <span className="text-rose-400">*</span></label>
               <div className="relative">
                 <select
                   value={siteId}
-                  onChange={(e) => { setSiteId(e.target.value); setStory(null) }}
-                  className="form-input appearance-none pr-10"
+                  onChange={(e) => { setSiteId(e.target.value); setStory(null); stopAudio() }}
+                  className="form-select text-xs pr-10"
                 >
-                  <option value="">Select a site...</option>
                   {HERITAGE_SITES.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
+                    <option key={s.id} value={s.id}>{s.name} ({s.location})</option>
                   ))}
                 </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500 pointer-events-none" />
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
               </div>
               {selectedSite && (
-                <div className="mt-2 flex items-center gap-2 text-xs text-stone-500">
-                  <Building2 className="w-3 h-3" />
-                  <span>{selectedSite.heritageType} · Est. {selectedSite.established}</span>
-                </div>
+                <p className="text-[11px] text-slate-400 mt-1.5">
+                  Category: {selectedSite.heritageType} · Est. {selectedSite.established}
+                </p>
               )}
             </div>
 
             {/* Interest */}
             <div>
-              <label className="form-label">
-                Story Interest <span className="text-red-400">*</span>
-              </label>
+              <label className="form-label">Story Lens & Audience <span className="text-rose-400">*</span></label>
               <div className="space-y-2">
                 {STORY_INTERESTS.map((si) => (
                   <button
                     key={si}
                     type="button"
-                    onClick={() => { setInterest(si); setStory(null) }}
-                    className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${
+                    onClick={() => { setInterest(si); setStory(null); stopAudio() }}
+                    className={`w-full p-3 rounded-xl border text-left flex items-start gap-3 transition-all ${
                       interest === si
-                        ? 'bg-sand-500/15 border-sand-500/40 text-stone-100'
-                        : 'bg-stone-900/40 border-stone-800/50 text-stone-400 hover:border-stone-700 hover:bg-stone-900/60'
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
+                        : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
                     }`}
                   >
-                    <span className="text-xl flex-shrink-0">{INTEREST_ICONS[si]}</span>
+                    <span className="text-lg">{INTEREST_ICONS[si]}</span>
                     <div>
-                      <p className={`text-sm font-semibold ${interest === si ? 'text-sand-300' : 'text-stone-300'}`}>{si}</p>
-                      <p className="text-xs text-stone-500">{INTEREST_DESC[si]}</p>
+                      <p className="text-xs font-bold text-slate-100">{si}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">{INTEREST_DESC[si]}</p>
                     </div>
                   </button>
                 ))}
@@ -130,119 +231,141 @@ export default function StoryMode() {
             <button
               onClick={handleGenerate}
               disabled={loading}
-              className="btn-primary w-full justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary w-full justify-center py-3 text-xs sm:text-sm shadow-lg"
             >
               {loading ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-stone-700 border-t-stone-950 rounded-full animate-spin" />
-                  Generating Story...
-                </>
+                <><span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> Synthesizing Story...</>
               ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  Generate Heritage Story
-                </>
+                <><Sparkles className="w-4 h-4" /> Generate IBM Granite Narrative</>
               )}
             </button>
           </div>
 
-          {/* Info */}
-          <div className="p-4 bg-stone-900/40 border border-stone-800/40 rounded-xl">
-            <p className="text-xs text-stone-500 leading-relaxed">
-              Stories are generated using IBM Granite LLM from factual heritage data. In Demo Mode, pre-crafted narratives are served for Ahmedabad Walled City and Modhera Sun Temple. All other sites use template responses.
+          {/* Interactive Site Trivia Card Widget */}
+          <div className="panel p-5 border border-slate-800 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-2">
+                <Award className="w-4 h-4 text-amber-400" />
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-200">Heritage Quick Fact</span>
+              </div>
+              <button
+                onClick={() => setActiveTriviaIdx((prev) => (prev + 1) % trivia.length)}
+                className="text-[11px] text-amber-400 hover:underline font-semibold"
+              >
+                Next Fact ➔
+              </button>
+            </div>
+            <p className="text-xs text-slate-300 italic leading-relaxed bg-slate-950 p-3 rounded-lg border border-slate-800">
+              "{trivia[activeTriviaIdx]}"
             </p>
           </div>
         </div>
 
-        {/* Story Output */}
+        {/* Story Content Output Column */}
         <div className="xl:col-span-3">
           {!story && !loading && (
-            <div className="flex flex-col items-center justify-center h-64 xl:h-full panel rounded-xl text-center p-12">
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
-                style={{ background: 'rgba(201,149,42,0.08)', border: '1px solid rgba(201,149,42,0.15)' }}>
-                <BookOpen className="w-8 h-8" style={{ color: '#c9952a', opacity: 0.5 }} />
-              </div>
-              <h3 className="font-serif text-xl font-semibold mb-2" style={{ color: '#4a4540' }}>Your Story Awaits</h3>
-              <p className="text-sm max-w-xs leading-relaxed" style={{ color: '#3a3530' }}>
-                Select a heritage site and story interest, then click "Generate Heritage Story" to experience Gujarat's living heritage through AI narrative.
-              </p>
+            <div className="panel p-12 border border-slate-800 text-center flex flex-col items-center justify-center min-h-[450px]">
+              <BookOpen className="w-10 h-10 text-amber-400/40 mb-3" />
+              <h3 className="font-serif text-lg font-bold text-slate-100 mb-1">Select a site and click "Generate IBM Granite Narrative"</h3>
+              <p className="text-xs text-slate-400 max-w-sm">Factual narratives grounded in UNESCO & Gujarat Archaeological Survey knowledge repositories.</p>
             </div>
           )}
 
           {loading && (
-            <div className="flex flex-col items-center justify-center h-64 xl:h-full panel rounded-xl text-center p-12">
-              <LoadingSpinner message="IBM Granite is crafting your heritage story..." size="lg" />
+            <div className="panel p-12 border border-amber-500/30 text-center flex flex-col items-center justify-center min-h-[450px]">
+              <LoadingSpinner message="IBM Granite LLM is composing grounded heritage narrative..." size="lg" />
             </div>
           )}
 
-          {story && (
-            <div className="panel p-7 animate-slide-up">
-              {/* Story header */}
-              <div className="flex items-start justify-between gap-4 mb-6 pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          {story && !loading && (
+            <div className="panel p-6 sm:p-8 border border-amber-500/30 space-y-6 shadow-2xl animate-fade-in">
+              
+              {/* Story Bar Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-lg">{INTEREST_ICONS[story.interest]}</span>
-                    <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#c9952a' }}>{story.interest}</span>
+                    <span className="text-base">{INTEREST_ICONS[story.interest]}</span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-amber-400">{story.interest}</span>
                   </div>
-                  <h2 className="font-serif text-2xl font-bold" style={{ color: '#f0ead8' }}>{story.siteName}</h2>
-                  <div className="flex items-center gap-2 mt-1.5 text-xs" style={{ color: '#4a4540' }}>
-                    <Clock className="w-3 h-3" />
-                    <span>Generated {new Date(story.generatedAt).toLocaleTimeString()}</span>
-                    {story.demoMode && (
-                      <span className="px-1.5 py-0.5 rounded font-bold uppercase tracking-wider"
-                        style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.2)', color: '#fbbf24', fontSize: '9px' }}>
-                        Demo AI Mode
-                      </span>
-                    )}
-                  </div>
+                  <h2 className="font-serif text-2xl font-bold text-slate-100">{story.siteName}</h2>
                 </div>
-                <button onClick={handleGenerate} className="btn-secondary text-xs px-3 py-1.5 flex-shrink-0">
-                  <Sparkles className="w-3.5 h-3.5" /> Regenerate
-                </button>
+
+                {/* Toolbar */}
+                <div className="flex items-center gap-2">
+                  <button onClick={handleCopy} className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1">
+                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+                    <span>{copied ? 'Copied' : 'Copy'}</span>
+                  </button>
+                  <button onClick={handleDownload} className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1">
+                    <Download className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Download .md</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Knowledge grounding indicator */}
+              {/* Working Web Speech API Audio Narration Player */}
+              <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between gap-4 shadow-inner">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={toggleAudio}
+                    className="w-10 h-10 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 flex items-center justify-center font-bold hover:scale-105 transition-all shadow-md"
+                  >
+                    {isPlayingAudio ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+                  </button>
+                  {isPlayingAudio && (
+                    <button
+                      onClick={stopAudio}
+                      className="p-2 rounded-lg bg-rose-950/60 border border-rose-800 text-rose-400 hover:text-white text-xs flex items-center gap-1"
+                    >
+                      <Square className="w-3.5 h-3.5" /> Stop
+                    </button>
+                  )}
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <Volume2 className={`w-3.5 h-3.5 ${isPlayingAudio ? 'text-amber-400 animate-pulse' : 'text-slate-400'}`} />
+                      <p className="text-xs font-bold text-slate-200">Interactive Web Speech Guide</p>
+                    </div>
+                    <p className="text-[10px] text-slate-400">
+                      {isPlayingAudio ? 'Speaking narrative using browser audio synthesis...' : 'Click play to listen to real speech synthesis'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Animated Waveform Visualization */}
+                <div className="flex items-center gap-1">
+                  {[40, 70, 30, 90, 50, 80, 20, 60, 100, 40, 70, 30].map((h, i) => (
+                    <span
+                      key={i}
+                      className={`w-1 rounded-full bg-amber-400 transition-all ${isPlayingAudio ? 'animate-pulse' : 'opacity-40'}`}
+                      style={{ height: `${isPlayingAudio ? Math.max(8, h * 0.25) : 8}px` }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Knowledge Grounding Indicator */}
               {story.groundedInKnowledge && (
-                <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-xl"
-                  style={{ background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.15)' }}>
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                  <p className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">
-                    Grounded in curated heritage knowledge
-                  </p>
-                  <span className="text-[10px] ml-auto" style={{ color: '#2a4030' }}>
-                    {story.knowledgeSources?.join(' · ')}
-                  </span>
+                <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800 flex items-center gap-2 text-xs text-emerald-300">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse-ring" />
+                  <span className="font-semibold uppercase tracking-wider text-[10px]">Verified Heritage Knowledge:</span>
+                  <span className="text-slate-400 truncate">{story.knowledgeSources?.join(' · ')}</span>
                 </div>
               )}
 
-              {/* Story content */}
-              <div>
+              {/* Story Content */}
+              <div className="space-y-4 text-slate-300 text-sm leading-relaxed font-sans">
                 {story.content.split('\n\n').map((para, i) => (
                   para.trim() && (
-                    <p key={i} className="leading-relaxed mb-4" style={{
-                      fontSize: para.trim().toUpperCase() === para.trim() && para.length < 60 ? '10px' : '13px',
-                      color: para.trim().toUpperCase() === para.trim() && para.length < 60 ? '#c9952a' : '#8a8070',
-                      fontWeight: para.trim().toUpperCase() === para.trim() && para.length < 60 ? '700' : '400',
-                      textTransform: para.trim().toUpperCase() === para.trim() && para.length < 60 ? 'uppercase' : 'none',
-                      letterSpacing: para.trim().toUpperCase() === para.trim() && para.length < 60 ? '0.1em' : 'normal',
-                      marginTop: para.trim().toUpperCase() === para.trim() && para.length < 60 ? '20px' : '0',
-                    }}>
+                    <p key={i} className="leading-relaxed">
                       {para.trim()}
                     </p>
                   )
                 ))}
               </div>
-
-              {/* Footer */}
-              <div className="mt-6 pt-5" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                <p className="text-[10px] leading-relaxed" style={{ color: '#3a3530' }}>
-                  <span className="font-semibold" style={{ color: '#4a4540' }}>Responsible AI note: </span>
-                  This narrative is grounded in curated heritage knowledge and generated by IBM Granite AI. It should not be used as an academic citation. If a topic falls outside the verified knowledge scope, the response will indicate this explicitly.
-                </p>
-              </div>
             </div>
           )}
         </div>
+
       </div>
     </div>
   )
